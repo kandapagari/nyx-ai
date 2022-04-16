@@ -1,160 +1,47 @@
 import os
 from json import dumps
 
+import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from numpy import argmax, array, max
-from tensorflow import expand_dims
 from tensorflow.keras.models import load_model
-from tensorflow.keras.utils import get_file, img_to_array, load_img
-from tensorflow.nn import softmax
 from uvicorn import run
+
+from tensorflow_utils import class_predictions, load_image, model_predict
 
 app = FastAPI()
 model_dir = "food-vision-model.h5"
 model = load_model(model_dir)
 
-class_predictions = array([
-    'apple pie',
-    'baby back ribs',
-    'baklava',
-    'beef carpaccio',
-    'beef tartare',
-    'beet salad',
-    'beignets',
-    'bibimbap',
-    'bread pudding',
-    'breakfast burrito',
-    'bruschetta',
-    'caesar salad',
-    'cannoli',
-    'caprese salad',
-    'carrot cake',
-    'ceviche',
-    'cheesecake',
-    'cheese plate',
-    'chicken curry',
-    'chicken quesadilla',
-    'chicken wings',
-    'chocolate cake',
-    'chocolate mousse',
-    'churros',
-    'clam chowder',
-    'club sandwich',
-    'crab cakes',
-    'creme brulee',
-    'croque madame',
-    'cup cakes',
-    'deviled eggs',
-    'donuts',
-    'dumplings',
-    'edamame',
-    'eggs benedict',
-    'escargots',
-    'falafel',
-    'filet mignon',
-    'fish and chips',
-    'foie gras',
-    'french fries',
-    'french onion soup',
-    'french toast',
-    'fried calamari',
-    'fried rice',
-    'frozen yogurt',
-    'garlic bread',
-    'gnocchi',
-    'greek salad',
-    'grilled cheese sandwich',
-    'grilled salmon',
-    'guacamole',
-    'gyoza',
-    'hamburger',
-    'hot and sour soup',
-    'hot dog',
-    'huevos rancheros',
-    'hummus',
-    'ice cream',
-    'lasagna',
-    'lobster bisque',
-    'lobster roll sandwich',
-    'macaroni and cheese',
-    'macarons',
-    'miso soup',
-    'mussels',
-    'nachos',
-    'omelette',
-    'onion rings',
-    'oysters',
-    'pad thai',
-    'paella',
-    'pancakes',
-    'panna cotta',
-    'peking duck',
-    'pho',
-    'pizza',
-    'pork chop',
-    'poutine',
-    'prime rib',
-    'pulled pork sandwich',
-    'ramen',
-    'ravioli',
-    'red velvet cake',
-    'risotto',
-    'samosa',
-    'sashimi',
-    'scallops',
-    'seaweed salad',
-    'shrimp and grits',
-    'spaghetti bolognese',
-    'spaghetti carbonara',
-    'spring rolls',
-    'steak',
-    'strawberry shortcake',
-    'sushi',
-    'tacos',
-    'takoyaki',
-    'tiramisu',
-    'tuna tartare',
-    'waffles'
-])
-
 origins = ["*"]
 methods = ["*"]
 headers = ["*"]
 
-app.add_middleware(
-    CORSMiddleware, 
-    allow_origins = origins,
-    allow_credentials = True,
-    allow_methods = methods,
-    allow_headers = headers    
-)
+app.add_middleware(CORSMiddleware,
+                   allow_origins=origins,
+                   allow_credentials=True,
+                   allow_methods=methods,
+                   allow_headers=headers)
+
 
 @app.get("/")
 async def root():
     return {"message": "Welcome to the NYX-AI service API!"}
 
+
 @app.post("/net/image/prediction/")
-async def get_net_image_prediction(image_link: str = ""):
-    if image_link == "":
+async def get_net_image_prediction(image_link: str = "",
+                                   image_data: str = None):
+
+    if image_link == "" and image_data is None:
         return {"message": "No image link provided"}
-    
-    img_path = get_file(
-        origin = image_link
-    )
-    img = load_img(
-        img_path, 
-        target_size = (224, 224)
-    )
+    if image_link != "" and image_data is not None:
+        return {"message": "Please provide either an image link or image data"}
+    image = load_image(image_link, image_data)
+    score = model_predict(image, model)
 
-    img_array = img_to_array(img)
-    img_array = expand_dims(img_array, 0)
-
-    pred = model.predict(img_array)
-    score = softmax(pred[0])
-
-    class_prediction = class_predictions[argmax(score)]
-    model_score = round(max(score) * 100, 2)
+    class_prediction = class_predictions[np.argmax(score)]
+    model_score = round(np.max(score) * 100, 2)
     model_score = dumps(model_score.tolist())
 
     return {
@@ -162,6 +49,7 @@ async def get_net_image_prediction(image_link: str = ""):
         "model-prediction-confidence-score": model_score
     }
 
+
 if __name__ == "__main__":
-	port = int(os.environ.get('PORT', 5000))
-	run(app, host="0.0.0.0", port=port)
+    port = int(os.environ.get('PORT', 5000))
+    run(app, host="0.0.0.0", port=port)
